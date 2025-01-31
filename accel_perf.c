@@ -1,4 +1,4 @@
-// examples/accel/perf/accel_perf.c >> v2
+// examples/accel/perf/accel_perf.c >> v3
 
 
 /* SPDX-License-Identifier: BSD-3-Clause */
@@ -142,12 +142,42 @@ static void accel_perf_run(void *arg1) {
 
     struct spdk_cpuset cpumask;
     char thread_name[32];
+    uint32_t i;  // 코어 인덱스 변수 추가
+    struct worker_thread *worker;  // worker 선언 추가
 
-    SPDK_ENV_FOREACH_CORE(worker->core) {
-        snprintf(thread_name, sizeof(thread_name), "ap_worker_%u", worker->core);
+    SPDK_ENV_FOREACH_CORE(i) {  // i를 사용하여 반복
+        worker = calloc(1, sizeof(*worker));  // worker 메모리 할당
+        if (!worker) {
+            fprintf(stderr, "Unable to allocate worker\n");
+            return;
+        }
+
+        snprintf(thread_name, sizeof(thread_name), "ap_worker_%u", i);
         spdk_cpuset_zero(&cpumask);
-        spdk_cpuset_set_cpu(&cpumask, worker->core, true);
+        spdk_cpuset_set_cpu(&cpumask, i, true);
+
         struct spdk_thread *thread = spdk_thread_create(thread_name, &cpumask);
+        if (!thread) {
+            fprintf(stderr, "Failed to create SPDK thread\n");
+            free(worker);
+            return;
+        }
+
+        worker->core = i;
+        worker->thread = thread;
+        worker->ch = spdk_accel_get_io_channel();
+
+        if (!worker->ch) {
+            fprintf(stderr, "Unable to get an accel channel\n");
+            free(worker);
+            return;
+        }
+
+        pthread_mutex_lock(&g_workers_lock);
+        worker->link.tqe_next = g_workers;
+        g_workers = worker;
+        pthread_mutex_unlock(&g_workers_lock);
+
         spdk_thread_send_msg(thread, _init_thread, NULL);
     }
 
