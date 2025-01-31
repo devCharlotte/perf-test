@@ -18,6 +18,13 @@ static struct spdk_app_opts g_opts = {};
 static pthread_mutex_t g_workers_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct worker_thread *g_workers = NULL;
 
+struct worker_thread {
+    struct spdk_io_channel *ch;
+    struct spdk_thread *thread;
+    TAILQ_ENTRY(worker_thread) link;
+    unsigned core;
+};
+
 double get_cpu_usage(void);
 long get_memory_bandwidth_usage(void);
 void run_auto_qdepth_test(void);
@@ -53,19 +60,30 @@ void run_auto_qdepth_test(void) {
         char cmd[256];
         snprintf(cmd, sizeof(cmd), "./accel_perf -d software -w copy -q %d -t 10", qd);
 
-        /*  실행 실패 시 다음 Q-depth로 넘어감 */
         if (system(cmd) != 0) {
             printf("⚠️ Command execution failed: %s\n", cmd);
             continue;
         }
 
-        sleep(1);  //  시스템 리소스 소진 방지
+        sleep(1);
     }
     printf("[joonhee] Auto Q-depth test completed.\n");
 }
 
 /*  SPDK 종료 콜백 */
 static void shutdown_cb(void) {
+    struct worker_thread *worker, *tmp;
+
+    pthread_mutex_lock(&g_workers_lock);
+    worker = g_workers;
+    while (worker) {
+        tmp = worker->link.tqe_next;
+        spdk_put_io_channel(worker->ch);
+        free(worker);
+        worker = tmp;
+    }
+    pthread_mutex_unlock(&g_workers_lock);
+
     spdk_app_stop(0);
     printf("[joonhee] SPDK application stopped.\n");
 }
@@ -92,16 +110,80 @@ static void usage(void) {
     printf("\t[-y enable verification]\n");
 }
 
-/*  SPDK 실행 함수 */
+/*  SPDK 작업자 초기화 */
+static void _init_thread(void *arg1) {
+    struct worker_thread *worker = calloc(1, sizeof(*worker));
+    if (!worker) {
+        fprintf(stderr, "Unable to allocate worker\n");
+        spdk_thread_exit(spdk_get_thread());
+        return;
+    }
+
+    worker->ch = spdk_accel_get_io_channel();
+    if (!worker->ch) {
+        fprintf(stderr, "Unable to get an accel channel\n");
+        free(worker);
+        return;
+    }
+
+    worker->thread = spdk_get_thread();
+    pthread_mutex_lock(&g_workers_lock);
+    worker->link.tqe_next = g_workers;
+    g_workers = worker;
+    pthread_mutex_unlock(&g_workers_lock);
+}
+
+/*  SPDK 실행 */
 static void accel_perf_run(void *arg1) {
     printf("[joonhee] SPDK Accel Perf Test Running...\n");
+
+    struct spdk_cpuset cpumask;
+    char thread_name[32];
+    uint32_t i;  // 코어 인덱스 변수 추가
+    struct worker_thread *worker;  // worker 선언 추가
+
+    SPDK_ENV_FOREACH_CORE(i) {  // i를 사용하여 반복
+        worker = calloc(1, sizeof(*worker));  // worker 메모리 할당
+        if (!worker) {
+            fprintf(stderr, "Unable to allocate worker\n");
+            return;
+        }
+
+        snprintf(thread_name, sizeof(thread_name), "ap_worker_%u", i);
+        spdk_cpuset_zero(&cpumask);
+        spdk_cpuset_set_cpu(&cpumask, i, true);
+
+        struct spdk_thread *thread = spdk_thread_create(thread_name, &cpumask);
+        if (!thread) {
+            fprintf(stderr, "Failed to create SPDK thread\n");
+            free(worker);
+            return;
+        }
+
+        worker->core = i;
+        worker->thread = thread;
+        worker->ch = spdk_accel_get_io_channel();
+
+        if (!worker->ch) {
+            fprintf(stderr, "Unable to get an accel channel\n");
+            free(worker);
+            return;
+        }
+
+        pthread_mutex_lock(&g_workers_lock);
+        worker->link.tqe_next = g_workers;
+        g_workers = worker;
+        pthread_mutex_unlock(&g_workers_lock);
+
+        spdk_thread_send_msg(thread, _init_thread, NULL);
+    }
+
     printf("[joonhee] accel_perf_run() completed.\n");
 }
 
 /*  main() 함수 */
 int main(int argc, char **argv) {
     int g_rc = 0;
-
     printf("Starting accel_perf...\n");
 
     pthread_mutex_init(&g_workers_lock, NULL);
@@ -112,7 +194,7 @@ int main(int argc, char **argv) {
     g_opts.reactor_mask = "0x1";
     g_opts.shutdown_cb = shutdown_cb;
     g_opts.rpc_addr = NULL;
-    g_opts.iova_mode = "va";  //  iova-mode=va 설정
+    g_opts.iova_mode = "va";
 
     /*  SPDK 명령줄 인자 파싱 */
     g_rc = spdk_app_parse_args(argc, argv, &g_opts, "q:t:w:y", NULL, parse_args, usage);
@@ -124,10 +206,9 @@ int main(int argc, char **argv) {
     g_rc = spdk_app_start(&g_opts, accel_perf_run, NULL);
     if (g_rc) {
         printf("❌ ERROR: Failed to start SPDK application.\n");
-        return 1;  //  실행 실패 시 종료
+        return 1;
     }
 
-    /*  CPU 및 메모리 사용량 측정 */
     double cpu_usage = get_cpu_usage();
     long memory_bw = get_memory_bandwidth_usage();
     printf("CPU Usage: %.2f sec\n", cpu_usage);
