@@ -1,0 +1,41 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def plot_experiment_results(data, x_label, y_label, title):
+    """
+    실험 데이터를 입력하면 표와 그래프를 출력하는 함수
+    
+    Parameters:
+        data (dict): 실험 데이터 (x축 값을 포함한 dictionary)
+        x_label (str): x축 라벨
+        y_label (str): y축 라벨
+        title (str): 그래프 제목
+    """
+    # 데이터프레임 생성
+    df = pd.DataFrame(data)
+    
+    # 표 출력
+    fig, ax = plt.subplots(figsize=(6, 2))
+    ax.axis('tight')
+    ax.axis('off')
+    table = ax.table(cellText=df.values, colLabels=df.columns, cellLoc='center', loc='center')
+    plt.show()
+    
+    # 그래프 생성
+    plt.figure(figsize=(8, 5))
+    plt.plot(df[df.columns[0]], df[df.columns[1]], marker='o', linestyle='-', label=y_label)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.title(title)
+    plt.grid(True)
+    plt.legend()
+    plt.show()
+
+# 출력할 데이터 
+data_example = {
+    "x축": [1, 2, 4, 8, 16],
+    "y축 (MiB/s)": [11098, 12477, 13077, 12805, 24247]
+}
+
+# 함수 실행 예제
+plot_experiment_results(data_example, x_label="Number of Channels", y_label="Bandwidth (MiB/s)", title="ioat_perf : channels")
