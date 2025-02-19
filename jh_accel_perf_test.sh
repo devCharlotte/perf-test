@@ -1,62 +1,72 @@
 ssl@cse1:~/jh_spdk/accelTest/spdk/build/examples$ cat jh_accel_perf_test.sh
-
 #!/bin/bash
 
+# 실험 결과 저장 파일
+ACCEL_RESULT_FILE="accel_perf_results.log"
+
 # 로그 파일 초기화
-LOG_FILE="accel_perf_results.log"
-echo "SPDK accel_perf performance test by JoonHee" > $LOG_FILE
-echo "==============================" >> $LOG_FILE
-echo "실행 시간: $(date)" >> $LOG_FILE
-echo "" >> $LOG_FILE
+echo "===================================" > $ACCEL_RESULT_FILE
+echo "SPDK accel_perf Performance Test" >> $ACCEL_RESULT_FILE
+echo "실행 시간: $(date)" >> $ACCEL_RESULT_FILE
+echo "===================================" >> $ACCEL_RESULT_FILE
+echo "" >> $ACCEL_RESULT_FILE
 
-# accel_perf 실행 함수
+# 기본 설정값
+DEFAULT_TIME=5
+DEFAULT_TRANSFER_SIZE=4096
+DEFAULT_QDEPTH=32
+DEFAULT_THREADS=1
+
+# 테스트할 변수 리스트
+QUEUE_DEPTH_LIST=(16 32 64 128)
+THREADS_LIST=(1 2 4 8)
+TRANSFER_SIZE_LIST=(4096 8192 16384 32768)
+RUN_TIME_LIST=(2 5 10)
+
 run_test() {
-    CMD=$1
-    DESC=$2  # 설명 추가
-    echo -e "[JoonHee] Running : $DESC"
-    echo "[JoonHee] Command : $CMD"
+    DESC=$1
+    CMD=$2
 
-    echo "" >> $LOG_FILE
-    echo "==============================" >> $LOG_FILE
-    echo "[JoonHee] Test : $DESC" >> $LOG_FILE
-    echo "[JoonHee] Command : $CMD" >> $LOG_FILE
-    echo "------------------------------" >> $LOG_FILE
+    echo "==============================" >> $ACCEL_RESULT_FILE
+    echo "[JoonHee] Test : $DESC" >> $ACCEL_RESULT_FILE
+    echo "[JoonHee] Command : $CMD" >> $ACCEL_RESULT_FILE
+    echo "------------------------------" >> $ACCEL_RESULT_FILE
 
-    START_TIME=$(date +%s)
-    eval $CMD >> $LOG_FILE 2>&1
-    EXIT_CODE=$?
-    END_TIME=$(date +%s)
+    eval $CMD >> $ACCEL_RESULT_FILE 2>&1
 
-    if [ $EXIT_CODE -ne 0 ]; then
-        echo "[ERROR] 실행 실패: $CMD" | tee -a $LOG_FILE
-    fi
-
-    echo "실행 시간: $(($END_TIME - $START_TIME)) 초" >> $LOG_FILE
-    echo "" >> $LOG_FILE
+    echo "[JoonHee] Done !!" >> $ACCEL_RESULT_FILE
 }
 
-# 큐 뎁스 변화 테스트
-echo "=== Q-depth 변화 ===" >> $LOG_FILE
-for Q in 16 32 64 128; do
-    run_test "sudo ./accel_perf -q $Q -T 1 -o 4096 -t 5 -w copy -M software" "Q-depth: $Q"
+# ==============================
+# 큐 깊이 변화 실험
+echo "=== 큐 깊이 변화 실험 ===" | tee -a $ACCEL_RESULT_FILE
+for QDEPTH in "${QUEUE_DEPTH_LIST[@]}"; do
+    run_test "Queue Depth: $QDEPTH" "sudo ./accel_perf -q $QDEPTH -T $DEFAULT_THREADS -s $DEFAULT_TRANSFER_SIZE -w copy -M software"
 done
 
-# 스레드 개수 변화 테스트
-echo "=== 스레드 개수 변화 ===" >> $LOG_FILE
-for T in 1 2 4 8; do
-    run_test "sudo ./accel_perf -q 32 -T $T -o 4096 -t 5 -w copy -M software" "Thread Count: $T"
+# ==============================
+# 스레드 개수 변화 실험
+echo "" | tee -a $ACCEL_RESULT_FILE
+echo "=== 스레드 개수 변화 실험 ===" | tee -a $ACCEL_RESULT_FILE
+for THREADS in "${THREADS_LIST[@]}"; do
+    run_test "Threads: $THREADS" "sudo ./accel_perf -q $DEFAULT_QDEPTH -T $THREADS -s $DEFAULT_TRANSFER_SIZE -w copy -M software"
 done
 
-# 전송 크기 변화 테스트
-echo "=== 전송 크기 변화 ===" >> $LOG_FILE
-for O in 4096 8192 16384 32768; do
-    run_test "sudo ./accel_perf -q 32 -T 1 -o $O -t 5 -w copy -M software" "Transfer Size: $O"
+# ==============================
+# 전송 크기 변화 실험
+echo "" | tee -a $ACCEL_RESULT_FILE
+echo "=== 전송 크기 변화 실험 ===" | tee -a $ACCEL_RESULT_FILE
+for SIZE in "${TRANSFER_SIZE_LIST[@]}"; do
+    run_test "Transfer Size: $SIZE" "sudo ./accel_perf -q $DEFAULT_QDEPTH -T $DEFAULT_THREADS -s $SIZE -w copy -M software"
 done
 
-# 실행 시간 변화 테스트
-echo "=== 실행 시간 변화 ===" >> $LOG_FILE
-for T in 2 5 10; do
-    run_test "sudo ./accel_perf -q 32 -T 1 -o 4096 -t $T -w copy -M software" "Execution Time: $T sec"
+# ==============================
+# 실행 시간 변화 실험
+echo "" | tee -a $ACCEL_RESULT_FILE
+echo "=== 실행 시간 변화 실험 ===" | tee -a $ACCEL_RESULT_FILE
+for TIME in "${RUN_TIME_LIST[@]}"; do
+    run_test "Execution Time: $TIME sec" "sudo ./accel_perf -q $DEFAULT_QDEPTH -T $DEFAULT_THREADS -s $DEFAULT_TRANSFER_SIZE -w copy -M software -t $TIME"
 done
 
-echo "[JoonHee] Done !!"
+echo "=== 모든 실험 완료 ===" | tee -a $ACCEL_RESULT_FILE
+echo "실험 종료 시간: $(date)" | tee -a $ACCEL_RESULT_FILE
