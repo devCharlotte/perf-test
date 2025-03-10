@@ -1,0 +1,31 @@
+import matplotlib.pyplot as plt
+
+x_metric = [1024, 2048, 4096, 8192, 16384, 32768, 65536]
+
+y_metric_a_labels = ["a1", "a2", "a3", "a4", "a5", "a6", "a7"]  
+y_metric_b_labels = ["b1", "b2", "b3", "b4", "b5", "b6", "b7"]  
+
+numeric_y_a = [i * 5000 for i in range(1, len(y_metric_a_labels) + 1)]
+numeric_y_b = [i * 4500 for i in range(1, len(y_metric_b_labels) + 1)]
+
+plt.figure(figsize=(12, 6))
+
+plt.plot(x_metric, numeric_y_a, marker='o', linestyle='-', label="A", color='orange')
+plt.plot(x_metric, numeric_y_b, marker='s', linestyle='-', label="B", color='red')
+
+for i in range(len(x_metric)):
+    plt.text(x_metric[i], numeric_y_a[i] + 500, y_metric_a_labels[i], fontsize=10, ha='center', color='orange', fontweight='bold')
+    plt.text(x_metric[i], numeric_y_b[i] - 1500, y_metric_b_labels[i], fontsize=10, ha='center', color='red', fontweight='bold')
+
+plt.xticks(x_metric, labels=[str(ts) for ts in x_metric], fontsize=12, fontweight='bold')
+
+plt.xlabel("X Metric (Bytes)", fontsize=12, fontweight='bold')
+plt.ylabel("Y Metric", fontsize=12, fontweight='bold')  
+plt.title("Y Metric: A vs B", fontsize=14, fontweight='bold')
+plt.legend(fontsize=12)
+plt.grid(True, linestyle='--', alpha=0.6)
+
+plt.xscale("log")
+plt.xticks(x_metric, [str(ts) for ts in x_metric])
+
+plt.show()
