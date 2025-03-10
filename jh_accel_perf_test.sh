@@ -57,7 +57,7 @@ done
 echo "" | tee -a $ACCEL_RESULT_FILE
 echo "=== 전송 크기 변화 실험 ===" | tee -a $ACCEL_RESULT_FILE
 for SIZE in "${TRANSFER_SIZE_LIST[@]}"; do
-    run_test "Transfer Size: $SIZE" "sudo ./accel_perf -q $DEFAULT_QDEPTH -T $DEFAULT_THREADS -s $SIZE -w copy -M software"
+    run_test "Transfer Size: $SIZE" "sudo ./accel_perf -q $DEFAULT_QDEPTH -T $DEFAULT_THREADS -o $SIZE -w copy -M software"
 done
 
 # ==============================
